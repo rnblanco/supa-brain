@@ -41,7 +41,7 @@ You must manually paste and run the SQL in your Supabase dashboard.`,
 		fmt.Println("Copy and run this SQL in the Supabase SQL editor:")
 		fmt.Println("----------------------------------------")
 		fmt.Print(sqlContent)
-		fmt.Println("----------------------------------------\n")
+		fmt.Println("----------------------------------------")
 		fmt.Println("Opening browser...")
 		openBrowser(sqlEditorURL)
 		fmt.Println("(If browser didn't open, visit the SQL Editor URL above)")
