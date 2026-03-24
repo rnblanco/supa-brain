@@ -36,5 +36,5 @@ checksum:
 
 release:
   github:
-    owner: Gentleman-Programming
+    owner: rnblanco
     name: memory-server
