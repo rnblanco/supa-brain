@@ -7,8 +7,7 @@ Replaces keyword search with real semantic similarity so you can query with natu
 ## Install as Claude Code plugin
 
 ```bash
-claude plugin marketplace add rnblanco/supa-brain
-claude plugin install supa-brain
+claude plugin marketplace add rnblanco/supa-brain && claude plugin install supa-brain
 ```
 
 Full setup guide (Ollama, Supabase, credentials): [plugin/claude-code/README.md](plugin/claude-code/README.md)

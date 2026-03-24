@@ -88,8 +88,7 @@ The `SUPABASE_KEY` can be the anon key or a service role key from your Supabase 
 ## Step 4 — Install the plugin
 
 ```bash
-claude plugin marketplace add rnblanco/supa-brain
-claude plugin install supa-brain
+claude plugin marketplace add rnblanco/supa-brain && claude plugin install supa-brain
 ```
 
 Claude Code will register the MCP server and the `SessionStart` hook automatically.
