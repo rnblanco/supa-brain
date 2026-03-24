@@ -1,0 +1,40 @@
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: unix
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags: ["-s -w"]
+
+  - id: windows
+    goos: [windows]
+    goarch: [amd64]
+    ldflags: ["-s -w -H windowsgui"]
+
+archives:
+  - id: unix-archives
+    builds: [unix]
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+  - id: windows-archives
+    builds: [windows]
+    format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: Gentleman-Programming
+    name: memory-server

@@ -1,0 +1,6 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "memory-server",
+  "owner": { "name": "Gentleman Programming" },
+  "plugins": [{ "name": "memory-server", "source": "./plugin/claude-code" }]
+}
