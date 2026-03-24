@@ -24,13 +24,13 @@ func TestLoadConfig_Defaults(t *testing.T) {
 }
 
 func TestLoadConfig_FromFile(t *testing.T) {
+	os.Unsetenv("DB_URL")
 	os.Unsetenv("SUPABASE_URL")
-	os.Unsetenv("SUPABASE_KEY")
 
 	cfg := loadConfig("testdata/config_full.env")
 
-	assert.Equal(t, "https://test.supabase.co", cfg.SupabaseURL)
-	assert.Equal(t, "secret_key", cfg.SupabaseKey)
+	assert.Equal(t, "postgresql://postgres.YOUR_REF:YOUR_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres", cfg.DBUrl)
+	assert.Equal(t, "https://YOUR_REF.supabase.co", cfg.SupabaseURL)
 	assert.Equal(t, 7438, cfg.ServerPort)
 	assert.Equal(t, 10, cfg.DBMaxConns)
 }

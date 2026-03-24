@@ -22,8 +22,13 @@ func runStdio(_ []string) error {
 	cfgPath := filepath.Join(os.Getenv("USERPROFILE"), ".supa-brain", "config.env")
 	cfg := config.LoadConfig(cfgPath)
 
-	if cfg.SupabaseURL == "" {
-		return fmt.Errorf("SUPABASE_URL not set in %s", cfgPath)
+	if cfg.DBUrl == "" && !strings.HasPrefix(cfg.SupabaseKey, "postgresql://") && !strings.HasPrefix(cfg.SupabaseKey, "postgres://") {
+		return fmt.Errorf(
+			"DB_URL is not set in %s.\n"+
+				"Get the connection string from Supabase Dashboard → Settings → Database → Connection string (URI mode)\n"+
+				"and add DB_URL=postgresql://... to that file",
+			cfgPath,
+		)
 	}
 
 	ctx := context.Background()
@@ -45,7 +50,7 @@ func runStdio(_ []string) error {
 	}
 
 	// Supabase store
-	store, err := supabase.New(ctx, cfg.SupabaseURL, cfg.SupabaseKey, cfg.DBMaxConns, cfg.DBConnectTimeout)
+	store, err := supabase.New(ctx, cfg.DBUrl, cfg.SupabaseKey, cfg.DBMaxConns, cfg.DBConnectTimeout)
 	if err != nil {
 		return fmt.Errorf("cannot connect to Supabase: %w", err)
 	}

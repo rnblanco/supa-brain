@@ -21,66 +21,27 @@ type Store struct {
 
 // New creates a pgxpool connection to Supabase.
 //
-// supabaseURL is the project URL (e.g. https://xyz.supabase.co).
-//
-// serviceKey accepts two formats:
-//   - JWT service_role (eyJhbG...) — used as PostgreSQL password on the Supabase Pooler.
-//     Supabase's Transaction Pooler (port 6543) and Session Pooler (port 5432) both accept
-//     the service_role JWT as the password when the username is postgres.<ref>.
-//   - Full DSN (postgresql://...) — passed directly if serviceKey starts with "postgresql://"
-//     or "postgres://". This is the escape hatch when you have the direct connection string
-//     from Supabase Dashboard > Settings > Database.
-//
-// Note: the newer sb_secret_... key format is Supabase's REST/Auth API key and does NOT
-// work as a PostgreSQL password. You need the service_role JWT or the DB password from
-// the dashboard in that case.
-func New(ctx context.Context, supabaseURL, serviceKey string, maxConns int, connectTimeout time.Duration) (*Store, error) {
-	// Direct DSN escape hatch
-	if strings.HasPrefix(serviceKey, "postgresql://") || strings.HasPrefix(serviceKey, "postgres://") {
+// Connection is resolved in priority order:
+//  1. dbURL — if non-empty, used directly as a PostgreSQL DSN.
+//     Get it from Supabase Dashboard → Settings → Database → Connection string (URI mode).
+//     Set it as DB_URL in ~/.supa-brain/config.env.
+//  2. serviceKey — if it starts with "postgresql://" or "postgres://", used as DSN.
+//     This is a backward-compatible fallback for existing configs that set SUPABASE_KEY
+//     to a full connection string.
+//  3. Otherwise returns an error with setup instructions.
+func New(ctx context.Context, dbURL, serviceKey string, maxConns int, connectTimeout time.Duration) (*Store, error) {
+	switch {
+	case dbURL != "":
+		return newFromDSN(ctx, dbURL, maxConns, connectTimeout)
+	case strings.HasPrefix(serviceKey, "postgresql://") || strings.HasPrefix(serviceKey, "postgres://"):
 		return newFromDSN(ctx, serviceKey, maxConns, connectTimeout)
+	default:
+		return nil, fmt.Errorf(
+			"DB_URL is not set.\n" +
+				"Get the connection string from Supabase Dashboard → Settings → Database → Connection string (URI mode)\n" +
+				"and add DB_URL=postgresql://... to ~/.supa-brain/config.env",
+		)
 	}
-
-	ref := extractRef(supabaseURL)
-
-	// Build candidate connection strings in priority order.
-	// Transaction Pooler (6543) is preferred — stateless, scales better.
-	// Session Pooler (5432) is the fallback — supports prepared statements.
-	candidates := []string{
-		fmt.Sprintf(
-			"postgresql://postgres.%s:%s@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require",
-			ref, serviceKey,
-		),
-		fmt.Sprintf(
-			"postgresql://postgres.%s:%s@aws-0-us-west-2.pooler.supabase.com:5432/postgres?sslmode=require",
-			ref, serviceKey,
-		),
-		// Alternate region (us-east-1) — some projects are provisioned there
-		fmt.Sprintf(
-			"postgresql://postgres.%s:%s@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require",
-			ref, serviceKey,
-		),
-		fmt.Sprintf(
-			"postgresql://postgres.%s:%s@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require",
-			ref, serviceKey,
-		),
-	}
-
-	var lastErr error
-	for _, dsn := range candidates {
-		store, err := newFromDSN(ctx, dsn, maxConns, connectTimeout)
-		if err == nil {
-			return store, nil
-		}
-		lastErr = err
-	}
-
-	return nil, fmt.Errorf(
-		"supabase: all connection attempts failed (tried %d endpoints).\n"+
-			"If your SUPABASE_KEY is in sb_secret_... format, it cannot be used as a PostgreSQL password.\n"+
-			"Provide the service_role JWT (eyJhbG...) or a full DSN from Supabase Dashboard > Settings > Database.\n"+
-			"Last error: %w",
-		len(candidates), lastErr,
-	)
 }
 
 // NewFromDSN creates a Store from a full PostgreSQL connection string.
@@ -117,22 +78,6 @@ func newFromDSN(ctx context.Context, dsn string, maxConns int, connectTimeout ti
 	}
 
 	return &Store{pool: pool}, nil
-}
-
-// extractRef pulls the project ref from a Supabase URL.
-// "https://lxjsjebytrqbrcjhmgpi.supabase.co" → "lxjsjebytrqbrcjhmgpi"
-func extractRef(supabaseURL string) string {
-	s := supabaseURL
-	for _, prefix := range []string{"https://", "http://"} {
-		if strings.HasPrefix(s, prefix) {
-			s = s[len(prefix):]
-			break
-		}
-	}
-	if idx := strings.Index(s, "."); idx > 0 {
-		return s[:idx]
-	}
-	return s
 }
 
 // Insert always creates a new row, regardless of topic_key.

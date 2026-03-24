@@ -10,8 +10,9 @@ import (
 
 // Config holds all runtime configuration for supa-brain.
 type Config struct {
-	SupabaseURL      string
-	SupabaseKey      string
+	DBUrl            string // DB_URL — full PostgreSQL DSN (preferred)
+	SupabaseURL      string // SUPABASE_URL — used by db:migrate to open dashboard
+	SupabaseKey      string // SUPABASE_KEY — DSN fallback (backward compat)
 	OllamaURL        string
 	OllamaModel      string
 	ServerPort       int
@@ -33,6 +34,7 @@ func loadConfig(envFile string) Config {
 	ollamaTimeout, _ := time.ParseDuration(getEnv("OLLAMA_TIMEOUT", "10s"))
 
 	return Config{
+		DBUrl:            getEnv("DB_URL", ""),
 		SupabaseURL:      getEnv("SUPABASE_URL", ""),
 		SupabaseKey:      getEnv("SUPABASE_KEY", ""),
 		OllamaURL:        getEnv("OLLAMA_URL", "http://localhost:11434"),

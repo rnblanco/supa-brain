@@ -5,11 +5,9 @@ if ! command -v supa-brain &>/dev/null; then
 fi
 CONFIG="${HOME}/.supa-brain/config.env"
 if [[ -f "$CONFIG" ]]; then source "$CONFIG" 2>/dev/null; fi
-for VAR in SUPABASE_URL SUPABASE_KEY; do
-  if [[ -z "${!VAR:-}" ]]; then
-    ERRORS+=("$VAR not set. Add it to ~/.supa-brain/config.env")
-  fi
-done
+if [[ -z "${DB_URL:-}" ]]; then
+  ERRORS+=("DB_URL not set. Get it from Supabase Dashboard → Settings → Database → Connection string (URI mode) and add it to ~/.supa-brain/config.env")
+fi
 if ! curl -sf http://localhost:11434 &>/dev/null; then
   ERRORS+=("Ollama is not running. Start it with: ollama serve (or configure it as a service — see plugin README)")
 fi

@@ -20,14 +20,14 @@ var (
 
 func getTestStore(t *testing.T) *Store {
 	t.Helper()
-	url := os.Getenv("SUPABASE_URL")
+	dbURL := os.Getenv("DB_URL")
 	key := os.Getenv("SUPABASE_KEY")
-	if url == "" || key == "" {
-		t.Skip("SUPABASE_URL and SUPABASE_KEY not set — skipping integration test")
+	if dbURL == "" && key == "" {
+		t.Skip("DB_URL (or SUPABASE_KEY as DSN) not set — skipping integration test")
 	}
 
 	storeOnce.Do(func() {
-		sharedStore, storeErr = New(context.Background(), url, key, 3, 10*time.Second)
+		sharedStore, storeErr = New(context.Background(), dbURL, key, 3, 10*time.Second)
 	})
 
 	require.NoError(t, storeErr)
