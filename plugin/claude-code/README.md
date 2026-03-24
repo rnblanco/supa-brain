@@ -8,7 +8,7 @@ Persistent semantic memory for Claude Code, backed by Supabase + pgvector. Gives
 
 ## Prerequisites
 
-- **Go 1.24+** (to install via `go install`) — OR download a pre-compiled binary from [GitHub Releases](https://github.com/Gentleman-Programming/supa-brain/releases)
+- **supa-brain binary** — download a pre-compiled binary from [GitHub Releases](https://github.com/rnblanco/supa-brain/releases)
 - **Ollama** running locally with the `nomic-embed-text` model pulled
 - **Supabase** project with the `pgvector` extension enabled
 
@@ -65,15 +65,7 @@ Replace `<YOUR_USERNAME>` with your actual Windows username in the VBS script pa
 
 ## Step 2 — Install the supa-brain binary
 
-**Option A — Go users:**
-
-```bash
-go install github.com/Gentleman-Programming/supa-brain@latest
-```
-
-**Option B — Non-Go users:**
-
-Download the pre-compiled binary for your OS and architecture from [GitHub Releases](https://github.com/Gentleman-Programming/supa-brain/releases). Extract the archive and place the binary somewhere in your `PATH` (e.g., `~/.local/bin` on Linux/macOS, `C:\Users\<YOU>\bin` on Windows).
+Download the pre-compiled binary for your OS and architecture from [GitHub Releases](https://github.com/rnblanco/supa-brain/releases). Extract the archive and place the binary somewhere in your `PATH` (e.g., `~/.local/bin` on Linux/macOS, `C:\Users\<YOU>\bin` on Windows).
 
 ---
 
@@ -96,7 +88,7 @@ The `SUPABASE_KEY` can be the anon key or a service role key from your Supabase 
 ## Step 4 — Install the plugin
 
 ```bash
-claude plugin marketplace add Gentleman-Programming/supa-brain
+claude plugin marketplace add rnblanco/supa-brain
 claude plugin install supa-brain
 ```
 

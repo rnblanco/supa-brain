@@ -13,14 +13,6 @@ claude plugin install supa-brain
 
 Full setup guide (Ollama, Supabase, credentials): [plugin/claude-code/README.md](plugin/claude-code/README.md)
 
-## Install binary manually
-
-```bash
-go install github.com/rnblanco/supa-brain@latest
-```
-
-Or download a pre-built binary from [GitHub Releases](https://github.com/rnblanco/supa-brain/releases).
-
 ## MCP Tools
 
 | Tool | Description |
