@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	ollamaAdapter "memory-server/adapters/ollama"
-	"memory-server/adapters/migration"
-	supabaseAdapter "memory-server/adapters/supabase"
-	"memory-server/internal/config"
+	ollamaAdapter "supa-brain/adapters/ollama"
+	"supa-brain/adapters/migration"
+	supabaseAdapter "supa-brain/adapters/supabase"
+	"supa-brain/internal/config"
 )
 
 var migrateCmd = &cobra.Command{

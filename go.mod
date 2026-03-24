@@ -1,4 +1,4 @@
-module memory-server
+module supa-brain
 
 go 1.26.1
 

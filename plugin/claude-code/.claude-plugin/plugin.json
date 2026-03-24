@@ -1,5 +1,5 @@
 {
-  "name": "memory-server",
+  "name": "supa-brain",
   "description": "Persistent semantic memory for Claude Code — Supabase + pgvector",
   "version": "1.0.0",
   "min_claude_code_version": "1.5.0",

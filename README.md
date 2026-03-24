@@ -1,4 +1,4 @@
-# memory-server
+# supa-brain
 
 Persistent semantic memory MCP server for Claude Code — powered by Supabase + pgvector + Ollama.
 
@@ -7,8 +7,8 @@ Replaces keyword search with real semantic similarity so you can query with natu
 ## Install as Claude Code plugin
 
 ```bash
-claude plugin marketplace add rnblanco/memory-server
-claude plugin install memory-server
+claude plugin marketplace add rnblanco/supa-brain
+claude plugin install supa-brain
 ```
 
 Full setup guide (Ollama, Supabase, credentials): [plugin/claude-code/README.md](plugin/claude-code/README.md)
@@ -16,10 +16,10 @@ Full setup guide (Ollama, Supabase, credentials): [plugin/claude-code/README.md]
 ## Install binary manually
 
 ```bash
-go install github.com/rnblanco/memory-server@latest
+go install github.com/rnblanco/supa-brain@latest
 ```
 
-Or download a pre-built binary from [GitHub Releases](https://github.com/rnblanco/memory-server/releases).
+Or download a pre-built binary from [GitHub Releases](https://github.com/rnblanco/supa-brain/releases).
 
 ## MCP Tools
 
@@ -37,7 +37,7 @@ Or download a pre-built binary from [GitHub Releases](https://github.com/rnblanc
 
 ## Configuration
 
-Create `~/.memory-server/config.env`:
+Create `~/.supa-brain/config.env`:
 
 ```env
 SUPABASE_URL=https://xxxxx.supabase.co

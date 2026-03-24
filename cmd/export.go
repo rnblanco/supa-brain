@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	exportAdapter "memory-server/adapters/export"
-	supabaseAdapter "memory-server/adapters/supabase"
-	"memory-server/core"
-	"memory-server/internal/config"
+	exportAdapter "supa-brain/adapters/export"
+	supabaseAdapter "supa-brain/adapters/supabase"
+	"supa-brain/core"
+	"supa-brain/internal/config"
 )
 
 var exportCmd = &cobra.Command{

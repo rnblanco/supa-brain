@@ -8,7 +8,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config holds all runtime configuration for memory-server.
+// Config holds all runtime configuration for supa-brain.
 type Config struct {
 	SupabaseURL      string
 	SupabaseKey      string

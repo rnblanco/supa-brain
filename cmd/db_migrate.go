@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"memory-server/internal/config"
+	"supa-brain/internal/config"
 )
 
 var dbMigrateCmd = &cobra.Command{

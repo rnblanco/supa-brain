@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"memory-server/core"
+	"supa-brain/core"
 )
 
 // JSONExporter writes memories in Engram-compatible JSON format.

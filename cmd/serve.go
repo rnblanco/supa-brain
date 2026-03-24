@@ -12,14 +12,14 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"memory-server/adapters/ollama"
-	"memory-server/adapters/supabase"
-	"memory-server/core"
-	"memory-server/internal/config"
+	"supa-brain/adapters/ollama"
+	"supa-brain/adapters/supabase"
+	"supa-brain/core"
+	"supa-brain/internal/config"
 )
 
 func runStdio(_ []string) error {
-	cfgPath := filepath.Join(os.Getenv("USERPROFILE"), ".memory-server", "config.env")
+	cfgPath := filepath.Join(os.Getenv("USERPROFILE"), ".supa-brain", "config.env")
 	cfg := config.LoadConfig(cfgPath)
 
 	if cfg.SupabaseURL == "" {
@@ -41,7 +41,7 @@ func runStdio(_ []string) error {
 		}
 	}
 	if healthErr != nil {
-		return fmt.Errorf("ollama not reachable at %s — start Ollama before memory-server", cfg.OllamaURL)
+		return fmt.Errorf("ollama not reachable at %s — start Ollama before supa-brain", cfg.OllamaURL)
 	}
 
 	// Supabase store
@@ -52,7 +52,7 @@ func runStdio(_ []string) error {
 
 	svc := core.NewMemoryService(ollamaClient, store)
 
-	s := mcpserver.NewMCPServer("memory-server", "1.0.0")
+	s := mcpserver.NewMCPServer("supa-brain", "1.0.0")
 
 	// ── Tool: mem_save ─────────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("mem_save",

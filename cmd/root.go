@@ -8,7 +8,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "memory-server",
+	Use:   "supa-brain",
 	Short: "Semantic memory MCP server for Claude Code",
 	RunE: func(_ *cobra.Command, args []string) error {
 		return runStdio(args)

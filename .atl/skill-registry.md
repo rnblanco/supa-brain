@@ -1,4 +1,4 @@
-# Skill Registry — memory-server
+# Skill Registry — supa-brain
 
 Generated: 2026-03-24 | Mode: engram
 

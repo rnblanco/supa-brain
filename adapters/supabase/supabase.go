@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pgvector/pgvector-go"
 	pgxvec "github.com/pgvector/pgvector-go/pgx"
-	"memory-server/core"
+	"supa-brain/core"
 )
 
 // Store implements core.MemoryStore using Supabase (PostgreSQL + pgvector).

@@ -1,4 +1,4 @@
-# memory-server — Claude Code Plugin
+# supa-brain — Claude Code Plugin
 
 Persistent semantic memory for Claude Code, backed by Supabase + pgvector. Gives Claude 9 memory tools (`mem_save`, `mem_search`, `mem_session_summary`, `mem_get_observation`, `mem_update`, `mem_delete`, `mem_context`, `mem_suggest_topic_key`, `mem_capture_passive`) that survive across sessions.
 
@@ -8,7 +8,7 @@ Persistent semantic memory for Claude Code, backed by Supabase + pgvector. Gives
 
 ## Prerequisites
 
-- **Go 1.24+** (to install via `go install`) — OR download a pre-compiled binary from [GitHub Releases](https://github.com/Gentleman-Programming/memory-server/releases)
+- **Go 1.24+** (to install via `go install`) — OR download a pre-compiled binary from [GitHub Releases](https://github.com/Gentleman-Programming/supa-brain/releases)
 - **Ollama** running locally with the `nomic-embed-text` model pulled
 - **Supabase** project with the `pgvector` extension enabled
 
@@ -41,16 +41,16 @@ curl http://localhost:11434      # should return OK
 # 1. Download and install Ollama from https://ollama.com/download/windows
 
 # 2. Create the VBS wrapper for silent startup:
-New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.memory-server"
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.supa-brain"
 @'
 Set WShell = CreateObject("WScript.Shell")
 WShell.Run """C:\Users\<YOUR_USERNAME>\AppData\Local\Programs\Ollama\ollama.exe"" serve", 0, False
-'@ | Set-Content "$env:USERPROFILE\.memory-server\start-ollama.vbs"
+'@ | Set-Content "$env:USERPROFILE\.supa-brain\start-ollama.vbs"
 
 # 3. Register in Windows startup (launches silently via wscript.exe — no console window):
 Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" `
   -Name "OllamaServe" `
-  -Value "wscript.exe $env:USERPROFILE\.memory-server\start-ollama.vbs"
+  -Value "wscript.exe $env:USERPROFILE\.supa-brain\start-ollama.vbs"
 
 # 4. Pull the embedding model:
 ollama pull nomic-embed-text
@@ -63,27 +63,27 @@ Replace `<YOUR_USERNAME>` with your actual Windows username in the VBS script pa
 
 ---
 
-## Step 2 — Install the memory-server binary
+## Step 2 — Install the supa-brain binary
 
 **Option A — Go users:**
 
 ```bash
-go install github.com/Gentleman-Programming/memory-server@latest
+go install github.com/Gentleman-Programming/supa-brain@latest
 ```
 
 **Option B — Non-Go users:**
 
-Download the pre-compiled binary for your OS and architecture from [GitHub Releases](https://github.com/Gentleman-Programming/memory-server/releases). Extract the archive and place the binary somewhere in your `PATH` (e.g., `~/.local/bin` on Linux/macOS, `C:\Users\<YOU>\bin` on Windows).
+Download the pre-compiled binary for your OS and architecture from [GitHub Releases](https://github.com/Gentleman-Programming/supa-brain/releases). Extract the archive and place the binary somewhere in your `PATH` (e.g., `~/.local/bin` on Linux/macOS, `C:\Users\<YOU>\bin` on Windows).
 
 ---
 
 ## Step 3 — Configure credentials
 
-Create `~/.memory-server/config.env` with your Supabase credentials:
+Create `~/.supa-brain/config.env` with your Supabase credentials:
 
 ```bash
-mkdir -p ~/.memory-server
-cat > ~/.memory-server/config.env << 'EOF'
+mkdir -p ~/.supa-brain
+cat > ~/.supa-brain/config.env << 'EOF'
 SUPABASE_URL=https://xxxxx.supabase.co
 SUPABASE_KEY=eyJ...
 EOF
@@ -96,8 +96,8 @@ The `SUPABASE_KEY` can be the anon key or a service role key from your Supabase 
 ## Step 4 — Install the plugin
 
 ```bash
-claude plugin marketplace add Gentleman-Programming/memory-server
-claude plugin install memory-server
+claude plugin marketplace add Gentleman-Programming/supa-brain
+claude plugin install supa-brain
 ```
 
 Claude Code will register the MCP server and the `SessionStart` hook automatically.
@@ -123,8 +123,8 @@ You can also check that the following tools are listed in your session:
 
 If the `SessionStart` hook reports missing prerequisites, check:
 
-1. `memory-server` is in your `PATH` — run `which memory-server` (Linux/macOS) or `where memory-server` (Windows)
-2. `~/.memory-server/config.env` exists and contains `SUPABASE_URL` and `SUPABASE_KEY`
+1. `supa-brain` is in your `PATH` — run `which supa-brain` (Linux/macOS) or `where supa-brain` (Windows)
+2. `~/.supa-brain/config.env` exists and contains `SUPABASE_URL` and `SUPABASE_KEY`
 3. Ollama is running — `curl http://localhost:11434` should return a response
 
 ---

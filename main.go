@@ -1,6 +1,6 @@
 package main
 
-import "memory-server/cmd"
+import "supa-brain/cmd"
 
 func main() {
 	cmd.Execute()

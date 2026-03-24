@@ -7,7 +7,7 @@ import (
 	"io"
 	"time"
 
-	"memory-server/core"
+	"supa-brain/core"
 )
 
 // CSVExporter writes memories as CSV.

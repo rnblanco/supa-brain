@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"memory-server/core"
+	"supa-brain/core"
 )
 
 type engramExport struct {
