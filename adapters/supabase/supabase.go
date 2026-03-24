@@ -1,0 +1,352 @@
+package supabase
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
+	pgxvec "github.com/pgvector/pgvector-go/pgx"
+	"memory-server/core"
+)
+
+// Store implements core.MemoryStore using Supabase (PostgreSQL + pgvector).
+type Store struct {
+	pool *pgxpool.Pool
+}
+
+// New creates a pgxpool connection to Supabase.
+//
+// supabaseURL is the project URL (e.g. https://xyz.supabase.co).
+//
+// serviceKey accepts two formats:
+//   - JWT service_role (eyJhbG...) — used as PostgreSQL password on the Supabase Pooler.
+//     Supabase's Transaction Pooler (port 6543) and Session Pooler (port 5432) both accept
+//     the service_role JWT as the password when the username is postgres.<ref>.
+//   - Full DSN (postgresql://...) — passed directly if serviceKey starts with "postgresql://"
+//     or "postgres://". This is the escape hatch when you have the direct connection string
+//     from Supabase Dashboard > Settings > Database.
+//
+// Note: the newer sb_secret_... key format is Supabase's REST/Auth API key and does NOT
+// work as a PostgreSQL password. You need the service_role JWT or the DB password from
+// the dashboard in that case.
+func New(ctx context.Context, supabaseURL, serviceKey string, maxConns int, connectTimeout time.Duration) (*Store, error) {
+	// Direct DSN escape hatch
+	if strings.HasPrefix(serviceKey, "postgresql://") || strings.HasPrefix(serviceKey, "postgres://") {
+		return newFromDSN(ctx, serviceKey, maxConns, connectTimeout)
+	}
+
+	ref := extractRef(supabaseURL)
+
+	// Build candidate connection strings in priority order.
+	// Transaction Pooler (6543) is preferred — stateless, scales better.
+	// Session Pooler (5432) is the fallback — supports prepared statements.
+	candidates := []string{
+		fmt.Sprintf(
+			"postgresql://postgres.%s:%s@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require",
+			ref, serviceKey,
+		),
+		fmt.Sprintf(
+			"postgresql://postgres.%s:%s@aws-0-us-west-2.pooler.supabase.com:5432/postgres?sslmode=require",
+			ref, serviceKey,
+		),
+		// Alternate region (us-east-1) — some projects are provisioned there
+		fmt.Sprintf(
+			"postgresql://postgres.%s:%s@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require",
+			ref, serviceKey,
+		),
+		fmt.Sprintf(
+			"postgresql://postgres.%s:%s@aws-0-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require",
+			ref, serviceKey,
+		),
+	}
+
+	var lastErr error
+	for _, dsn := range candidates {
+		store, err := newFromDSN(ctx, dsn, maxConns, connectTimeout)
+		if err == nil {
+			return store, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf(
+		"supabase: all connection attempts failed (tried %d endpoints).\n"+
+			"If your SUPABASE_KEY is in sb_secret_... format, it cannot be used as a PostgreSQL password.\n"+
+			"Provide the service_role JWT (eyJhbG...) or a full DSN from Supabase Dashboard > Settings > Database.\n"+
+			"Last error: %w",
+		len(candidates), lastErr,
+	)
+}
+
+// NewFromDSN creates a Store from a full PostgreSQL connection string.
+// This is useful when the caller has the direct DSN from the Supabase dashboard.
+func NewFromDSN(ctx context.Context, dsn string, maxConns int, connectTimeout time.Duration) (*Store, error) {
+	return newFromDSN(ctx, dsn, maxConns, connectTimeout)
+}
+
+func newFromDSN(ctx context.Context, dsn string, maxConns int, connectTimeout time.Duration) (*Store, error) {
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("supabase: parse config: %w", err)
+	}
+
+	cfg.MaxConns = int32(maxConns)
+	cfg.MinConns = 2
+	cfg.MaxConnLifetime = time.Hour
+	cfg.MaxConnIdleTime = 30 * time.Minute
+	cfg.ConnConfig.ConnectTimeout = connectTimeout
+
+	// pgvector requires type registration on every new connection.
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		return pgxvec.RegisterTypes(ctx, conn)
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("supabase: create pool: %w", err)
+	}
+
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fmt.Errorf("supabase: ping failed: %w", err)
+	}
+
+	return &Store{pool: pool}, nil
+}
+
+// extractRef pulls the project ref from a Supabase URL.
+// "https://lxjsjebytrqbrcjhmgpi.supabase.co" → "lxjsjebytrqbrcjhmgpi"
+func extractRef(supabaseURL string) string {
+	s := supabaseURL
+	for _, prefix := range []string{"https://", "http://"} {
+		if strings.HasPrefix(s, prefix) {
+			s = s[len(prefix):]
+			break
+		}
+	}
+	if idx := strings.Index(s, "."); idx > 0 {
+		return s[:idx]
+	}
+	return s
+}
+
+// Insert always creates a new row, regardless of topic_key.
+func (s *Store) Insert(ctx context.Context, m core.Memory) (int64, error) {
+	if m.CreatedAt.IsZero() {
+		m.CreatedAt = time.Now()
+	}
+	if m.UpdatedAt.IsZero() {
+		m.UpdatedAt = time.Now()
+	}
+
+	var id int64
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO memories (title, content, type, project, scope, topic_key, embedding, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id`,
+		m.Title, m.Content, m.Type, m.Project, m.Scope,
+		m.TopicKey, pgvector.NewVector(m.Embedding),
+		m.CreatedAt, m.UpdatedAt,
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("supabase: insert: %w", err)
+	}
+	return id, nil
+}
+
+// Upsert updates the existing row matching (project, topic_key) if found,
+// otherwise inserts. Falls back to Insert when TopicKey is nil.
+func (s *Store) Upsert(ctx context.Context, m core.Memory) (int64, error) {
+	if m.TopicKey == nil {
+		return s.Insert(ctx, m)
+	}
+
+	var id int64
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO memories (title, content, type, project, scope, topic_key, embedding, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
+		ON CONFLICT (project, topic_key) WHERE topic_key IS NOT NULL
+		DO UPDATE SET
+			title      = EXCLUDED.title,
+			content    = EXCLUDED.content,
+			type       = EXCLUDED.type,
+			scope      = EXCLUDED.scope,
+			embedding  = EXCLUDED.embedding,
+			updated_at = now()
+		RETURNING id`,
+		m.Title, m.Content, m.Type, m.Project, m.Scope,
+		m.TopicKey, pgvector.NewVector(m.Embedding),
+	).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("supabase: upsert: %w", err)
+	}
+	return id, nil
+}
+
+// Search runs a cosine-similarity query via the search_memories SQL function.
+func (s *Store) Search(ctx context.Context, q core.SearchQuery) ([]core.MemoryResult, error) {
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	minSim := q.MinSimilarity
+	if minSim < 0 {
+		minSim = 0.3
+	}
+
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, title, content, type, project, scope, topic_key, similarity, created_at
+		 FROM search_memories($1, $2, $3, $4, $5)`,
+		pgvector.NewVector(q.Embedding),
+		q.Project, q.Scope, limit, minSim,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("supabase: search: %w", err)
+	}
+	defer rows.Close()
+
+	var results []core.MemoryResult
+	for rows.Next() {
+		var r core.MemoryResult
+		if err := rows.Scan(
+			&r.ID, &r.Title, &r.Content, &r.Type,
+			&r.Project, &r.Scope, &r.TopicKey,
+			&r.Similarity, &r.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("supabase: scan result: %w", err)
+		}
+		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("supabase: rows error: %w", err)
+	}
+	return results, nil
+}
+
+// GetByID returns the full memory for the given ID, or nil if not found.
+func (s *Store) GetByID(ctx context.Context, id int64) (*core.Memory, error) {
+	var m core.Memory
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, title, content, type, project, scope, topic_key, created_at, updated_at
+		 FROM memories WHERE id = $1`, id,
+	).Scan(
+		&m.ID, &m.Title, &m.Content, &m.Type,
+		&m.Project, &m.Scope, &m.TopicKey,
+		&m.CreatedAt, &m.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("supabase: get by id: %w", err)
+	}
+	return &m, nil
+}
+
+// Delete removes memories matching (project, topicKey).
+// If topicKey is empty, deletes ALL memories for the project (useful for test cleanup).
+func (s *Store) Delete(ctx context.Context, project, topicKey string) error {
+	var err error
+	if topicKey == "" {
+		_, err = s.pool.Exec(ctx,
+			`DELETE FROM memories WHERE project = $1`, project)
+	} else {
+		_, err = s.pool.Exec(ctx,
+			`DELETE FROM memories WHERE project = $1 AND topic_key = $2`,
+			project, topicKey)
+	}
+	if err != nil {
+		return fmt.Errorf("supabase: delete: %w", err)
+	}
+	return nil
+}
+
+// SaveSession writes to the sessions table AND inserts a session_summary memory
+// atomically (single transaction). If the session ID already exists it is updated.
+func (s *Store) SaveSession(ctx context.Context, sess core.Session, embedding []float32) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("supabase: begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO sessions (id, project, summary, started_at, ended_at)
+		VALUES ($1, $2, $3, now(), now())
+		ON CONFLICT (id)
+		DO UPDATE SET
+			summary  = EXCLUDED.summary,
+			ended_at = now()`,
+		sess.ID, sess.Project, sess.Summary,
+	)
+	if err != nil {
+		return fmt.Errorf("supabase: save session record: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO memories (title, content, type, project, scope, embedding, created_at, updated_at)
+		VALUES ($1, $2, 'session_summary', $3, 'project', $4, now(), now())`,
+		fmt.Sprintf("Session: %s", sess.Project),
+		sess.Summary,
+		sess.Project,
+		pgvector.NewVector(embedding),
+	)
+	if err != nil {
+		return fmt.Errorf("supabase: save session memory: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("supabase: commit session: %w", err)
+	}
+	return nil
+}
+
+// Export returns all memories matching the filter, ordered by created_at ASC.
+func (s *Store) Export(ctx context.Context, f core.ExportFilter) ([]core.Memory, error) {
+	var (
+		query string
+		args  []interface{}
+	)
+
+	if f.Project != nil {
+		query = `
+			SELECT id, title, content, type, project, scope, topic_key, created_at, updated_at
+			FROM memories
+			WHERE project = $1
+			ORDER BY created_at ASC`
+		args = []interface{}{*f.Project}
+	} else {
+		query = `
+			SELECT id, title, content, type, project, scope, topic_key, created_at, updated_at
+			FROM memories
+			ORDER BY created_at ASC`
+	}
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("supabase: export: %w", err)
+	}
+	defer rows.Close()
+
+	var memories []core.Memory
+	for rows.Next() {
+		var m core.Memory
+		if err := rows.Scan(
+			&m.ID, &m.Title, &m.Content, &m.Type,
+			&m.Project, &m.Scope, &m.TopicKey,
+			&m.CreatedAt, &m.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("supabase: export scan: %w", err)
+		}
+		memories = append(memories, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("supabase: export rows: %w", err)
+	}
+	return memories, nil
+}
