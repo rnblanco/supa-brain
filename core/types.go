@@ -44,3 +44,20 @@ type MemoryResult struct {
 type ExportFilter struct {
 	Project *string // nil = all projects
 }
+
+// UpdateFields holds the fields that can be patched on an existing observation.
+// Only non-nil fields are applied. Set TopicKey to pointer-to-empty-string to clear it (NULL).
+type UpdateFields struct {
+	Title     *string
+	Content   *string
+	Type      *string
+	Scope     *string
+	TopicKey  *string   // "" = set NULL, non-empty = update value, nil = no change
+	Embedding []float32 // nil = no change
+}
+
+// ContextResult holds recent sessions and observations for session recovery.
+type ContextResult struct {
+	Sessions     []Session
+	Observations []Memory
+}

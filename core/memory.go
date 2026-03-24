@@ -137,3 +137,65 @@ func (s *MemoryService) GetByID(ctx context.Context, id int64) (*Memory, error) 
 func (s *MemoryService) Forget(ctx context.Context, project, topicKey string) error {
 	return s.store.Delete(ctx, project, topicKey)
 }
+
+// UpdateInput holds parameters for the mem_update MCP tool.
+type UpdateInput struct {
+	ID       int64
+	Title    *string
+	Content  *string
+	Type     *string
+	Scope    *string
+	TopicKey *string
+}
+
+// Update patches an existing observation by ID. Re-embeds if title or content change.
+func (s *MemoryService) Update(ctx context.Context, in UpdateInput) error {
+	if in.Title == nil && in.Content == nil && in.Type == nil &&
+		in.Scope == nil && in.TopicKey == nil {
+		return fmt.Errorf("at least one field must be provided")
+	}
+
+	fields := UpdateFields{
+		Title:    in.Title,
+		Content:  in.Content,
+		Type:     in.Type,
+		Scope:    in.Scope,
+		TopicKey: in.TopicKey,
+	}
+
+	// Re-embed only if title or content changed — both contribute to the vector.
+	if in.Title != nil || in.Content != nil {
+		current, err := s.store.GetByID(ctx, in.ID)
+		if err != nil {
+			return fmt.Errorf("cannot fetch memory %d: %w", in.ID, err)
+		}
+		if current == nil {
+			return fmt.Errorf("memory %d not found", in.ID)
+		}
+
+		title := current.Title
+		if in.Title != nil {
+			title = *in.Title
+		}
+		content := current.Content
+		if in.Content != nil {
+			content = *in.Content
+		}
+
+		vec, err := s.embedder.Embed(ctx, title+"\n"+content)
+		if err != nil {
+			return fmt.Errorf("embedding service unavailable: %w", err)
+		}
+		fields.Embedding = vec
+	}
+
+	return s.store.UpdateByID(ctx, in.ID, fields)
+}
+
+// GetContext returns recent sessions and observations for session recovery.
+func (s *MemoryService) GetContext(ctx context.Context, project string, limit int) (*ContextResult, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	return s.store.GetRecentContext(ctx, project, limit)
+}

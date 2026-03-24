@@ -306,6 +306,138 @@ func (s *Store) SaveSession(ctx context.Context, sess core.Session, embedding []
 	return nil
 }
 
+// UpdateByID patches an existing memory. Only non-nil fields in UpdateFields are changed.
+func (s *Store) UpdateByID(ctx context.Context, id int64, fields core.UpdateFields) error {
+	setClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if fields.Title != nil {
+		setClauses = append(setClauses, fmt.Sprintf("title = $%d", argIdx))
+		args = append(args, *fields.Title)
+		argIdx++
+	}
+	if fields.Content != nil {
+		setClauses = append(setClauses, fmt.Sprintf("content = $%d", argIdx))
+		args = append(args, *fields.Content)
+		argIdx++
+	}
+	if fields.Type != nil {
+		setClauses = append(setClauses, fmt.Sprintf("type = $%d", argIdx))
+		args = append(args, *fields.Type)
+		argIdx++
+	}
+	if fields.Scope != nil {
+		setClauses = append(setClauses, fmt.Sprintf("scope = $%d", argIdx))
+		args = append(args, *fields.Scope)
+		argIdx++
+	}
+	if fields.TopicKey != nil {
+		setClauses = append(setClauses, fmt.Sprintf("topic_key = $%d", argIdx))
+		if *fields.TopicKey == "" {
+			args = append(args, nil) // clear to NULL
+		} else {
+			args = append(args, *fields.TopicKey)
+		}
+		argIdx++
+	}
+	if fields.Embedding != nil {
+		setClauses = append(setClauses, fmt.Sprintf("embedding = $%d", argIdx))
+		args = append(args, pgvector.NewVector(fields.Embedding))
+		argIdx++
+	}
+
+	if len(setClauses) == 0 {
+		return nil
+	}
+
+	setClauses = append(setClauses, fmt.Sprintf("updated_at = $%d", argIdx))
+	args = append(args, time.Now().UTC())
+	argIdx++
+
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE memories SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), argIdx)
+
+	_, err := s.pool.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("supabase: update by id: %w", err)
+	}
+	return nil
+}
+
+// GetRecentContext returns recent sessions and observations ordered by recency.
+func (s *Store) GetRecentContext(ctx context.Context, project string, limit int) (*core.ContextResult, error) {
+	result := &core.ContextResult{}
+
+	// Recent sessions
+	var (
+		sessionRows pgx.Rows
+		err         error
+	)
+	if project != "" {
+		sessionRows, err = s.pool.Query(ctx,
+			`SELECT id, project, summary, started_at, ended_at FROM sessions
+			 WHERE project = $1 ORDER BY started_at DESC LIMIT $2`,
+			project, limit)
+	} else {
+		sessionRows, err = s.pool.Query(ctx,
+			`SELECT id, project, summary, started_at, ended_at FROM sessions
+			 ORDER BY started_at DESC LIMIT $1`,
+			limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("supabase: context sessions: %w", err)
+	}
+	for sessionRows.Next() {
+		var sess core.Session
+		if err := sessionRows.Scan(&sess.ID, &sess.Project, &sess.Summary, &sess.StartedAt, &sess.EndedAt); err != nil {
+			sessionRows.Close()
+			return nil, fmt.Errorf("supabase: scan session: %w", err)
+		}
+		result.Sessions = append(result.Sessions, sess)
+	}
+	if err := sessionRows.Err(); err != nil {
+		return nil, fmt.Errorf("supabase: session rows: %w", err)
+	}
+	sessionRows.Close()
+
+	// Recent observations
+	var obsRows pgx.Rows
+	if project != "" {
+		obsRows, err = s.pool.Query(ctx,
+			`SELECT id, title, content, type, project, scope, topic_key, created_at, updated_at
+			 FROM memories WHERE project = $1 ORDER BY created_at DESC LIMIT $2`,
+			project, limit)
+	} else {
+		obsRows, err = s.pool.Query(ctx,
+			`SELECT id, title, content, type, project, scope, topic_key, created_at, updated_at
+			 FROM memories ORDER BY created_at DESC LIMIT $1`,
+			limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("supabase: context observations: %w", err)
+	}
+	defer obsRows.Close()
+
+	for obsRows.Next() {
+		var m core.Memory
+		if err := obsRows.Scan(
+			&m.ID, &m.Title, &m.Content, &m.Type,
+			&m.Project, &m.Scope, &m.TopicKey,
+			&m.CreatedAt, &m.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("supabase: scan observation: %w", err)
+		}
+		result.Observations = append(result.Observations, m)
+	}
+	if err := obsRows.Err(); err != nil {
+		return nil, fmt.Errorf("supabase: observation rows: %w", err)
+	}
+
+	return result, nil
+}
+
 // Export returns all memories matching the filter, ordered by created_at ASC.
 func (s *Store) Export(ctx context.Context, f core.ExportFilter) ([]core.Memory, error) {
 	var (

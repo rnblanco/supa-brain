@@ -36,6 +36,13 @@ type MemoryStore interface {
 
 	// Export returns all memories matching the filter.
 	Export(ctx context.Context, f ExportFilter) ([]Memory, error)
+
+	// UpdateByID patches an existing memory. Only non-nil fields in UpdateFields are changed.
+	UpdateByID(ctx context.Context, id int64, fields UpdateFields) error
+
+	// GetRecentContext returns recent sessions and observations ordered by recency.
+	// If project is empty, returns across all projects.
+	GetRecentContext(ctx context.Context, project string, limit int) (*ContextResult, error)
 }
 
 // Exporter serializes a slice of memories to an output stream.

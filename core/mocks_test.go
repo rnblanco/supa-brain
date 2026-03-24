@@ -49,3 +49,7 @@ func (m *mockStore) SaveSession(_ context.Context, s Session, _ []float32) error
 func (m *mockStore) Export(_ context.Context, _ ExportFilter) ([]Memory, error) {
 	return nil, m.err
 }
+func (m *mockStore) UpdateByID(_ context.Context, _ int64, _ UpdateFields) error { return m.err }
+func (m *mockStore) GetRecentContext(_ context.Context, _ string, _ int) (*ContextResult, error) {
+	return &ContextResult{}, m.err
+}

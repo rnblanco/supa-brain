@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -195,6 +196,59 @@ func runStdio(_ []string) error {
 
 	// ── Tool: mem_update ───────────────────────────────────────────────────────
 	s.AddTool(mcp.NewTool("mem_update",
+		mcp.WithDescription("Update an existing observation by ID. Only provided fields are changed. Re-embeds if title or content changes."),
+		mcp.WithNumber("id", mcp.Required(), mcp.Description("Numeric observation ID to update")),
+		mcp.WithString("title", mcp.Description("New title")),
+		mcp.WithString("content", mcp.Description("New content")),
+		mcp.WithString("type", mcp.Description("New type: bugfix | decision | architecture | discovery | pattern | config | preference")),
+		mcp.WithString("scope", mcp.Description("New scope: project or personal")),
+		mcp.WithString("topic_key", mcp.Description("New topic key. Empty string clears it to NULL.")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := req.GetArguments()
+		if args == nil {
+			return mcp.NewToolResultError("id is required"), nil
+		}
+		v, ok := args["id"]
+		if !ok {
+			return mcp.NewToolResultError("id is required"), nil
+		}
+		var id int64
+		switch n := v.(type) {
+		case float64:
+			id = int64(n)
+		case int64:
+			id = n
+		default:
+			return mcp.NewToolResultError("id must be a number"), nil
+		}
+
+		in := core.UpdateInput{ID: id}
+		if s := req.GetString("title", ""); s != "" {
+			in.Title = &s
+		}
+		if s := req.GetString("content", ""); s != "" {
+			in.Content = &s
+		}
+		if s := req.GetString("type", ""); s != "" {
+			in.Type = &s
+		}
+		if s := req.GetString("scope", ""); s != "" {
+			in.Scope = &s
+		}
+		// topic_key: present in args = update (even if empty string = clear to NULL)
+		if _, hasTK := args["topic_key"]; hasTK {
+			s := req.GetString("topic_key", "")
+			in.TopicKey = &s
+		}
+
+		if err := svc.Update(ctx, in); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("update failed: %s", err)), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf(`{"status":"updated","id":%d}`, id)), nil
+	})
+
+	// ── Tool: mem_delete ───────────────────────────────────────────────────────
+	s.AddTool(mcp.NewTool("mem_delete",
 		mcp.WithDescription("Delete the memory matching a project + topic_key pair."),
 		mcp.WithString("project", mcp.Required(), mcp.Description("Project slug")),
 		mcp.WithString("topic_key", mcp.Required(), mcp.Description("Topic key of the memory to delete")),
@@ -207,10 +261,185 @@ func runStdio(_ []string) error {
 		}
 
 		if err := svc.Forget(ctx, project, topicKey); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("forget failed: %s", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("delete failed: %s", err)), nil
 		}
 		return mcp.NewToolResultText(fmt.Sprintf(`{"status":"deleted","project":%q,"topic_key":%q}`, project, topicKey)), nil
 	})
 
+	// ── Tool: mem_context ──────────────────────────────────────────────────────
+	s.AddTool(mcp.NewTool("mem_context",
+		mcp.WithDescription("Get recent memory context from previous sessions. Returns recent sessions and observations ordered by recency — no embedding cost."),
+		mcp.WithString("project", mcp.Description("Filter by project slug (omit for all projects)")),
+		mcp.WithNumber("limit", mcp.Description("Number of items to retrieve per category (default 10)")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		project := req.GetString("project", "")
+		limit := 10
+		if args := req.GetArguments(); args != nil {
+			if v, ok := args["limit"]; ok {
+				if n, ok := v.(float64); ok {
+					limit = int(n)
+				}
+			}
+		}
+
+		result, err := svc.GetContext(ctx, project, limit)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("context failed: %s", err)), nil
+		}
+		return mcp.NewToolResultText(formatContext(result, project)), nil
+	})
+
+	// ── Tool: mem_suggest_topic_key ────────────────────────────────────────────
+	s.AddTool(mcp.NewTool("mem_suggest_topic_key",
+		mcp.WithDescription("Suggest a stable topic_key for memory upserts. Use before mem_save when you want evolving topics to update a single observation over time."),
+		mcp.WithString("title", mcp.Description("Observation title (preferred input)")),
+		mcp.WithString("type", mcp.Description("Observation type, e.g. architecture, decision, bugfix")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		title := req.GetString("title", "")
+		memType := req.GetString("type", "")
+		key := suggestTopicKey(title, memType)
+		return mcp.NewToolResultText(fmt.Sprintf(`{"topic_key":%q}`, key)), nil
+	})
+
+	// ── Tool: mem_capture_passive ──────────────────────────────────────────────
+	s.AddTool(mcp.NewTool("mem_capture_passive",
+		mcp.WithDescription("Extract and save structured learnings from text output. Looks for '## Key Learnings:' or '## Aprendizajes Clave:' sections and saves each numbered or bulleted item as a separate observation."),
+		mcp.WithString("content", mcp.Required(), mcp.Description("Text containing a '## Key Learnings:' section")),
+		mcp.WithString("project", mcp.Description("Project slug (inferred from CWD if omitted)")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		content := req.GetString("content", "")
+		if content == "" {
+			return mcp.NewToolResultError("content is required"), nil
+		}
+		project := req.GetString("project", inferProject(cfg.MemoryProject))
+
+		items := extractLearnings(content)
+		saved := 0
+		for _, item := range items {
+			title := item
+			if len(title) > 80 {
+				title = title[:80]
+			}
+			_, err := svc.Remember(ctx, core.RememberInput{
+				Title:   title,
+				Content: item,
+				Type:    "discovery",
+				Project: project,
+				Scope:   "project",
+			})
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("capture failed at item %d: %s", saved+1, err)), nil
+			}
+			saved++
+		}
+		return mcp.NewToolResultText(fmt.Sprintf(`{"extracted":%d,"saved":%d,"duplicates":0}`, len(items), saved)), nil
+	})
+
 	return mcpserver.ServeStdio(s)
+}
+
+// formatContext renders a ContextResult as human-readable markdown for the AI.
+func formatContext(result *core.ContextResult, project string) string {
+	var sb strings.Builder
+
+	header := "## Memory Context"
+	if project != "" {
+		header += " — " + project
+	}
+	sb.WriteString(header + "\n\n")
+
+	sb.WriteString("### Recent Sessions\n")
+	if len(result.Sessions) == 0 {
+		sb.WriteString("No sessions found.\n")
+	} else {
+		for _, sess := range result.Sessions {
+			preview := sess.Summary
+			if len(preview) > 120 {
+				preview = preview[:120] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("- **%s** | %s | %s\n",
+				sess.Project, sess.StartedAt.Format("2006-01-02 15:04"), preview))
+		}
+	}
+
+	sb.WriteString("\n### Recent Observations\n")
+	if len(result.Observations) == 0 {
+		sb.WriteString("No observations found.\n")
+	} else {
+		for _, m := range result.Observations {
+			preview := m.Content
+			if len(preview) > 200 {
+				preview = preview[:200] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("- [%s] **%s** | %s\n  %s\n",
+				m.Type, m.Title, m.CreatedAt.Format("2006-01-02 15:04"), preview))
+		}
+	}
+
+	return sb.String()
+}
+
+// suggestTopicKey normalizes a title and optional type into a stable slug.
+// e.g. "Fixed JWT auth middleware", "bugfix" → "bugfix/fixed-jwt-auth-middleware"
+func suggestTopicKey(title, memType string) string {
+	key := strings.ToLower(strings.TrimSpace(title))
+	var b strings.Builder
+	for _, r := range key {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	// collapse multiple dashes
+	parts := strings.FieldsFunc(b.String(), func(r rune) bool { return r == '-' })
+	slug := strings.Join(parts, "-")
+
+	if memType != "" {
+		return strings.ToLower(memType) + "/" + slug
+	}
+	return slug
+}
+
+// extractLearnings parses "## Key Learnings:" or "## Aprendizajes Clave:" sections
+// and returns each numbered or bulleted item as a separate string.
+func extractLearnings(content string) []string {
+	lines := strings.Split(content, "\n")
+	seen := map[string]bool{}
+	var items []string
+	inSection := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+
+		if strings.HasPrefix(lower, "## key learnings") || strings.HasPrefix(lower, "## aprendizajes") {
+			inSection = true
+			continue
+		}
+		if inSection && strings.HasPrefix(trimmed, "##") {
+			break
+		}
+		if !inSection {
+			continue
+		}
+
+		item := ""
+		switch {
+		case strings.HasPrefix(trimmed, "- "):
+			item = strings.TrimSpace(trimmed[2:])
+		case strings.HasPrefix(trimmed, "* "):
+			item = strings.TrimSpace(trimmed[2:])
+		case len(trimmed) > 2 && trimmed[0] >= '1' && trimmed[0] <= '9':
+			if idx := strings.IndexAny(trimmed, ".)"); idx > 0 && idx < 4 {
+				item = strings.TrimSpace(trimmed[idx+1:])
+			}
+		}
+
+		if item != "" && !seen[item] {
+			seen[item] = true
+			items = append(items, item)
+		}
+	}
+	return items
 }
