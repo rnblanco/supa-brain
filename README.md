@@ -31,8 +31,11 @@ Full setup guide (Ollama, Supabase, credentials): [plugin/claude-code/README.md]
 Create `~/.supa-brain/config.env`:
 
 ```env
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_KEY=eyJ...
+# Supabase Dashboard → Settings → Database → Connection string (URI mode)
+DB_URL=postgresql://postgres.YOUR_REF:YOUR_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+
+# Optional — only needed for the db:migrate command
+SUPABASE_URL=https://YOUR_REF.supabase.co
 ```
 
 ## Requirements

@@ -71,17 +71,21 @@ Download the pre-compiled binary for your OS and architecture from [GitHub Relea
 
 ## Step 3 — Configure credentials
 
-Create `~/.supa-brain/config.env` with your Supabase credentials:
+Create `~/.supa-brain/config.env` with your Supabase connection string:
 
 ```bash
 mkdir -p ~/.supa-brain
 cat > ~/.supa-brain/config.env << 'EOF'
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_KEY=eyJ...
+# Supabase Dashboard → Settings → Database → Connection string → URI
+# Use the Transaction Pooler (port 6543)
+DB_URL=postgresql://postgres.YOUR_REF:YOUR_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+
+# Optional — only needed for the db:migrate command
+SUPABASE_URL=https://YOUR_REF.supabase.co
 EOF
 ```
 
-The `SUPABASE_KEY` can be the anon key or a service role key from your Supabase project settings.
+Get the `DB_URL` from your Supabase project: **Dashboard → Settings → Database → Connection string → URI mode**. The password is your **Database Password** (not the anon/service key).
 
 ---
 
@@ -115,7 +119,7 @@ You can also check that the following tools are listed in your session:
 If the `SessionStart` hook reports missing prerequisites, check:
 
 1. `supa-brain` is in your `PATH` — run `which supa-brain` (Linux/macOS) or `where supa-brain` (Windows)
-2. `~/.supa-brain/config.env` exists and contains `SUPABASE_URL` and `SUPABASE_KEY`
+2. `~/.supa-brain/config.env` exists and contains `DB_URL` with a valid PostgreSQL connection string
 3. Ollama is running — `curl http://localhost:11434` should return a response
 
 ---
